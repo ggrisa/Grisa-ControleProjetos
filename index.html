@@ -1001,6 +1001,8 @@ async function confirmModal() {
       toast('Datas atualizadas!','ok');
       closeModal(); return;
     }
+
+    if (modalType==='project') {
       const f3=document.getElementById('f3')?.value?.trim();
       const f4=document.getElementById('f4')?.value?.trim();
       const {data:p,error:pe}=await db.from('projects').insert({name:f1,code:f2||null,start_date:f3||null,end_date:f4||null,status:'ativo'}).select().single();
