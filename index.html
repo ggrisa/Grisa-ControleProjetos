@@ -453,7 +453,7 @@ async function renderHome() {
       db.from('drawings').select('id,project_id').in('project_id', allPids),
       db.from('columns').select('id,project_id').in('project_id', allPids),
       db.from('tasks').select('drawing_id,done'),
-      db.from('backlog').select('project_id,done').in('project_id', allPids),
+      db.from('backlog').select('id,project_id,done').in('project_id', allPids),
       db.from('pendencias').select('ref_id'),
     ]);
 
