@@ -292,6 +292,7 @@ td.tcell{text-align:center;border-left:1px solid var(--border)}
         <div class="topbar-meta" id="projMeta">—</div>
       </div>
       <div class="topbar-right" id="topActions" style="display:none">
+        <button class="btn btn-ghost btn-sm" onclick="openModal('editProjDates')">📅 Datas</button>
         <button class="btn btn-ghost btn-sm" onclick="openTemplates()">📋 Modelos</button>
         <button class="btn btn-accent btn-sm" onclick="openModal('sequential')">⚡ Sequencial</button>
         <button class="btn btn-ghost btn-sm" onclick="openModal('column')">+ Coluna</button>
@@ -429,18 +430,80 @@ function renderSidebar() {
 }
 
 // HOME SCREEN
-function renderHome() {
+async function renderHome() {
   document.getElementById('projTitle').textContent = 'Início';
   document.getElementById('projMeta').textContent = `${projects.filter(p=>(p.status||'ativo')==='ativo').length} projetos ativos`;
   document.getElementById('topActions').style.display='none';
   document.getElementById('editProjBtn').style.display='none';
 
-  const ativos = projects.filter(p=>(p.status||'ativo')==='ativo');
+  // load stats for all projects
+  let statsMap = {};
+  if (projects.length) {
+    const allPids = projects.map(p=>p.id);
+
+    const [drRes, colRes, taskRes, blRes, pendRes] = await Promise.all([
+      db.from('drawings').select('id,project_id').in('project_id', allPids),
+      db.from('columns').select('id,project_id').in('project_id', allPids),
+      db.from('tasks').select('drawing_id,done'),
+      db.from('backlog').select('project_id,done').in('project_id', allPids),
+      db.from('pendencias').select('ref_id'),
+    ]);
+
+    const drawings   = drRes.data||[];
+    const columns    = colRes.data||[];
+    const allTasks   = taskRes.data||[];
+    const allBacklog = blRes.data||[];
+    const allPends   = pendRes.data||[];
+
+    // index drawings per project
+    const drawsByProj = {};
+    for (const d of drawings) {
+      if (!drawsByProj[d.project_id]) drawsByProj[d.project_id]=[];
+      drawsByProj[d.project_id].push(d.id);
+    }
+
+    // cols per project
+    const colsByProj = {};
+    for (const c of columns) {
+      if (!colsByProj[c.project_id]) colsByProj[c.project_id]=0;
+      colsByProj[c.project_id]++;
+    }
+
+    // tasks done per drawing
+    const taskDoneByDraw = {};
+    for (const t of allTasks) {
+      if (!taskDoneByDraw[t.drawing_id]) taskDoneByDraw[t.drawing_id]=0;
+      if (t.done) taskDoneByDraw[t.drawing_id]++;
+    }
+
+    // pends per drawing/backlog id
+    const pendSet = new Set(allPends.map(p=>p.ref_id));
+
+    for (const p of projects) {
+      const dIds    = drawsByProj[p.id]||[];
+      const numCols = colsByProj[p.id]||0;
+      const total   = dIds.length * numCols;
+      const done    = dIds.reduce((a,did)=>a+(taskDoneByDraw[did]||0),0);
+      const pct     = total>0?Math.round(done/total*100):0;
+      const blPend  = (allBacklog.filter(b=>b.project_id===p.id&&!b.done)).length;
+      // count pendencias for this project's drawings + backlog
+      const pendCount = [...dIds].filter(id=>pendSet.has(id)).length +
+        allBacklog.filter(b=>b.project_id===p.id&&pendSet.has(b.id)).length;
+      // actually count all pend entries not just refs
+      const pendTotal = allPends.filter(pd=>dIds.includes(pd.ref_id)||allBacklog.some(b=>b.project_id===p.id&&b.id===pd.ref_id)).length;
+
+      statsMap[p.id] = { draws: dIds.length, total, done, pct, blPend, pendTotal };
+    }
+  }
+
+  const ativos    = projects.filter(p=>(p.status||'ativo')==='ativo');
   const concluidos = projects.filter(p=>p.status==='concluido');
 
   const cardHTML = (list) => {
     if (!list.length) return `<div class="home-empty"><div style="font-size:30px;opacity:.3">📁</div><div style="font-size:14px;font-weight:700;color:var(--silver)">Nenhum projeto aqui</div></div>`;
-    return list.map(p=>`
+    return list.map(p=>{
+      const s = statsMap[p.id]||{draws:0,total:0,done:0,pct:0,blPend:0,pendTotal:0};
+      return `
       <div class="proj-card" onclick="loadProject('${p.id}')">
         <div class="proj-card-top">
           <div>
@@ -462,7 +525,15 @@ function renderHome() {
             <span class="proj-card-date-val">${p.end_date?fmtDate(p.end_date):'—'}</span>
           </div>
         </div>
-      </div>`).join('');
+        <div class="proj-card-bar-bg"><div class="proj-card-bar-fill" style="width:${s.pct}%"></div></div>
+        <div class="proj-card-stats">
+          <span class="proj-card-stat"><span>${s.draws}</span> desenhos</span>
+          <span class="proj-card-stat"><span>${s.done}/${s.total}</span> tarefas</span>
+          <span class="proj-card-stat"><span>${s.pct}%</span> progresso</span>
+          <span class="proj-card-stat"><span>${s.blPend}</span> backlog</span>
+          ${s.pendTotal>0?`<span class="proj-card-pend">⚠ ${s.pendTotal} pendência${s.pendTotal!==1?'s':''}</span>`:''}
+        </div>
+      </div>`;}).join('');
   };
 
   document.getElementById('content').innerHTML=`
@@ -568,6 +639,8 @@ function renderAll() {
             <button class="ntb" onclick="fmt('insertUnorderedList')">☰</button>
             <div class="ntb-sep"></div>
             <button class="ntb" onclick="insertImg()">📎 Imagem</button>
+            <div class="ntb-sep"></div>
+            <button class="ntb" onclick="clearNotes()" style="color:var(--danger);border-color:var(--danger)">🗑️ Limpar</button>
           </div>
         </div>
         <div class="notes-body" id="notesEl" contenteditable="true" oninput="schedSave()" onpaste="handlePaste(event)" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="handleDragLeave(event)">${notes}</div>
@@ -647,6 +720,8 @@ async function toggleBL(id,wasDone) {
   renderAll();
 }
 async function delBL(id) {
+  const b = backlog.find(x=>x.id===id);
+  if (!confirm(`Remover a tarefa "${b?.text}"?`)) return;
   await db.from('backlog').delete().eq('id',id);
   backlog=backlog.filter(b=>b.id!==id);
   renderAll();
@@ -771,11 +846,30 @@ function handleDragOver(e) { e.preventDefault(); document.getElementById('notesW
 function handleDragLeave() { document.getElementById('notesWrap')?.classList.remove('notes-drop-active'); }
 function handleDrop(e) { e.preventDefault(); document.getElementById('notesWrap')?.classList.remove('notes-drop-active'); const f=e.dataTransfer?.files[0]; if (f&&f.type.startsWith('image/')) embedImage(f); }
 
+async function clearNotes() {
+  if (!confirm('Tem certeza que deseja limpar todas as anotações? Esta ação não pode ser desfeita.')) return;
+  const el = document.getElementById('notesEl');
+  if (el) el.innerHTML='';
+  const pid = activeProj.id;
+  if (notesId) { await db.from('notes').update({content:''}).eq('id',notesId); }
+  else { const {data:n}=await db.from('notes').insert({project_id:pid,content:''}).select().single(); notesId=n.id; }
+  notes='';
+  toast('Notas limpas','ok');
+}
+
 // DELETE COL/DRAW/PROJECT
-async function delCol(id) { await db.from('columns').delete().eq('id',id); cols=cols.filter(c=>c.id!==id); renderAll(); }
-async function delDraw(id) { await db.from('drawings').delete().eq('id',id); draws=draws.filter(d=>d.id!==id); delete tasks[id]; renderAll(); }
+async function delCol(id) {
+  const c = cols.find(x=>x.id===id);
+  if (!confirm(`Remover a coluna "${c?.name}"?\nTodos os checks desta coluna serão perdidos.`)) return;
+  await db.from('columns').delete().eq('id',id); cols=cols.filter(c=>c.id!==id); renderAll();
+}
+async function delDraw(id) {
+  const d = draws.find(x=>x.id===id);
+  if (!confirm(`Remover o desenho "${d?.code}"?\nTodos os checks e pendências serão perdidos.`)) return;
+  await db.from('drawings').delete().eq('id',id); draws=draws.filter(d=>d.id!==id); delete tasks[id]; renderAll();
+}
 async function delProject() {
-  if (!confirm(`Excluir "${activeProj.name}"?`)) return;
+  if (!confirm(`Excluir o projeto "${activeProj.name}"?\n\nTodos os desenhos, tarefas, backlog e notas serão excluídos permanentemente. Esta ação não pode ser desfeita.`)) return;
   await db.from('projects').delete().eq('id',activeProj.id);
   projects=projects.filter(p=>p.id!==activeProj.id);
   activeProj=null; renderSidebar();
@@ -788,6 +882,13 @@ async function delProject() {
 
 // MODAL DEFS
 const modalDefs = {
+  editProjDates: {
+    title:'📅 Datas do Projeto',
+    body:`<div class="field-row">
+            <div class="field"><label>Data de Início</label><input id="f3" class="date-input" placeholder="Selecione..." readonly/></div>
+            <div class="field"><label>Data Prevista de Término</label><input id="f4" class="date-input" placeholder="Selecione..." readonly/></div>
+          </div>`
+  },
   project: {
     title:'Novo Projeto',
     body:`<div class="field"><label>Nome *</label><input id="f1" placeholder="Ex: Edifício Central"/></div>
@@ -847,10 +948,13 @@ function openModal(type) {
   document.getElementById('overlay').classList.add('open');
   setTimeout(()=>{
     document.getElementById('f1')?.focus();
-    // init date pickers
     ['f2','f5'].forEach(id=>{ const el=document.getElementById(id); if (el&&el.classList.contains('date-input')) initDatePicker(id); });
-    ['f3','f4'].forEach(id=>{ const el=document.getElementById(id); if (el&&el.classList.contains('date-input')) initDatePicker(id); });
-    // sequential preview
+    ['f3','f4'].forEach(id=>{ const el=document.getElementById(id); if (el&&el.classList.contains('date-input')) {
+      const defaultVal = type==='editProjDates'
+        ? (id==='f3'?activeProj?.start_date:activeProj?.end_date)||''
+        : '';
+      initDatePicker(id, defaultVal);
+    }});
     if (type==='sequential') {
       ['f1','f3','f4'].forEach(id=>document.getElementById(id)?.addEventListener('input',updateSeqPreview));
     }
@@ -886,7 +990,17 @@ async function confirmModal() {
   const pid=activeProj?.id;
 
   try {
-    if (modalType==='project') {
+    if (modalType==='editProjDates') {
+      const f3=document.getElementById('f3')?.value?.trim();
+      const f4=document.getElementById('f4')?.value?.trim();
+      await db.from('projects').update({start_date:f3||null,end_date:f4||null}).eq('id',activeProj.id);
+      activeProj.start_date=f3||null;
+      activeProj.end_date=f4||null;
+      const p=projects.find(x=>x.id===activeProj.id);
+      if(p){p.start_date=f3||null;p.end_date=f4||null;}
+      toast('Datas atualizadas!','ok');
+      closeModal(); return;
+    }
       const f3=document.getElementById('f3')?.value?.trim();
       const f4=document.getElementById('f4')?.value?.trim();
       const {data:p,error:pe}=await db.from('projects').insert({name:f1,code:f2||null,start_date:f3||null,end_date:f4||null,status:'ativo'}).select().single();
@@ -1269,6 +1383,8 @@ async function addPend() {
 }
 
 async function delPend(id) {
+  const pend = (pendencias[activePend.id]||[]).find(p=>p.id===id);
+  if (!confirm(`Remover a pendência:\n"${pend?.descricao}"?`)) return;
   await db.from('pendencias').delete().eq('id',id);
   const refId = activePend.id;
   pendencias[refId] = (pendencias[refId]||[]).filter(p=>p.id!==id);
