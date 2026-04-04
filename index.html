@@ -620,8 +620,19 @@ async function renderHome() {
 
   // ── PRAZOS ALERTAS ──
   const parseDate = s => { const [y,m,d]=s.split('-'); return new Date(y,m-1,d); };
+
+  // índice de tarefas concluídas por desenho para verificar se está 100%
+  const taskCountByDraw = {};
+  const taskDoneCountByDraw = {};
+  for (const t of (await db.from('tasks').select('drawing_id,done')).data||[]) {
+    if (!taskCountByDraw[t.drawing_id]) { taskCountByDraw[t.drawing_id]=0; taskDoneCountByDraw[t.drawing_id]=0; }
+    taskCountByDraw[t.drawing_id]++;
+    if (t.done) taskDoneCountByDraw[t.drawing_id]++;
+  }
+  const isDrawDone = id => taskCountByDraw[id]>0 && taskCountByDraw[id]===taskDoneCountByDraw[id];
+
   const alertDraws = allDrawingsData
-    .filter(d=>{ const p=projects.find(x=>x.id===d.project_id); return (p?.status||'ativo')==='ativo' && d.due_date; })
+    .filter(d=>{ const p=projects.find(x=>x.id===d.project_id); return (p?.status||'ativo')==='ativo' && d.due_date && !isDrawDone(d.id); })
     .map(d=>{
       const proj = projects.find(x=>x.id===d.project_id);
       const dt   = parseDate(d.due_date);
@@ -918,13 +929,18 @@ function buildMatrix() {
   const tbody=draws.length?`<tbody>${draws.map(d=>{
     const pds=pendencias[d.id]||[];
     const hasPend=pds.length>0;
-    return `<tr id="draw-row-${d.id}">
+    // check if all tasks done
+    const drawTasks = cols.map(c=>tasks[d.id]?.[c.id]);
+    const allDone = cols.length>0 && drawTasks.every(t=>t?.done);
+    const rowStyle = allDone?'background:rgba(74,222,128,.06);border-left:3px solid #4ade80':'';
+    const dateStyle = allDone?'color:#4ade80;font-weight:700':dateCls(d.due_date);
+    return `<tr id="draw-row-${d.id}" style="${rowStyle}">
       <td>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-          <div class="draw-code">${esc(d.code)}</div>
+          <div class="draw-code" style="${allDone?'color:#4ade80':''}">${allDone?'✅ ':''}${esc(d.code)}</div>
           <button class="pend-btn ${hasPend?'active':''}" onclick="openPend('drawing','${d.id}','${esc(d.code)}')" title="Pendências">!${hasPend?`<span class="pend-count">${pds.length}</span>`:''}</button>
         </div>
-        ${d.due_date?`<div class="draw-date" style="${dateCls(d.due_date)}">📅 ${fmtDate(d.due_date)}</div>`:''}
+        ${d.due_date?`<div class="draw-date" style="${dateStyle}">📅 ${fmtDate(d.due_date)}${allDone?' · concluído':''}</div>`:''}
         <div class="draw-actions">
           <button class="draw-btn" onclick="editDraw('${d.id}')">✏️ Editar</button>
           <button class="draw-btn del" onclick="delDraw('${d.id}')">Remover</button>
