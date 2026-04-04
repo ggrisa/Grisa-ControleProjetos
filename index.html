@@ -18,8 +18,7 @@
 }
 html,body{height:100%}
 body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:15px}
-.app{display:flex;min-height:100vh}
-
+.app{min-height:100vh}
 /* SIDEBAR TABS */
 .sidebar-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
 .sidebar-tab{flex:1;padding:9px 0;background:transparent;border:none;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;transition:all .15s;letter-spacing:.04em;border-bottom:2px solid transparent}
@@ -49,7 +48,7 @@ body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-he
 
 /* MAIN */
 .main{margin-left:240px;display:flex;flex-direction:column;min-height:100vh;overflow-x:hidden}
-.topbar{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg);position:sticky;top:0;z-index:50;flex-wrap:wrap;gap:10px}
+.topbar{padding:16px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--bg);position:sticky;top:0;z-index:50;gap:10px;flex-wrap:nowrap}
 .topbar h2{font-size:20px;font-weight:800;letter-spacing:-.03em}
 .topbar-meta{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);margin-top:2px}
 .topbar-right{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -327,7 +326,6 @@ body.flatpickr-open{overflow:hidden!important}
 
 /* RESPONSIVE */
 @media(max-width:768px){
-  .app{display:block}
   .sidebar{width:280px;transform:translateX(-100%);transition:transform .3s;z-index:150;height:100vh}
   .sidebar.open{transform:translateX(0)}
   .main{margin-left:0}
@@ -570,7 +568,7 @@ async function renderHome() {
       db.from('drawings').select('id,project_id,code,due_date').in('project_id', allPids),
       db.from('columns').select('id,project_id').in('project_id', allPids),
       db.from('tasks').select('drawing_id,done'),
-      db.from('backlog').select('id,project_id,done,text').in('project_id', allPids),
+      db.from('backlog').select('id,project_id,done,text,due_date').in('project_id', allPids),
       db.from('pendencias').select('id,ref_id,descricao,ref_type'),
     ]);
 
@@ -586,6 +584,9 @@ async function renderHome() {
     for (const c of columns)  { if(!colsByProj[c.project_id]) colsByProj[c.project_id]=0; colsByProj[c.project_id]++; }
     for (const t of allTasks) { if(!taskDoneByDraw[t.drawing_id]) taskDoneByDraw[t.drawing_id]=0; if(t.done) taskDoneByDraw[t.drawing_id]++; }
 
+    const today = new Date(); today.setHours(0,0,0,0);
+    const parseDate = s => { const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); };
+
     for (const p of projects) {
       const dIds   = drawsByProj[p.id]||[];
       const numCols= colsByProj[p.id]||0;
@@ -596,10 +597,11 @@ async function renderHome() {
       const blIds  = allBacklogData.filter(b=>b.project_id===p.id).map(b=>b.id);
       const pendTotal = allPendsData.filter(pd=>dIds.includes(pd.ref_id)||blIds.includes(pd.ref_id)).length;
       // prazos
-      const today = new Date(); today.setHours(0,0,0,0);
-      const drawDates = drawings.filter(d=>d.project_id===p.id&&d.due_date).map(d=>new Date(d.due_date));
-      const overdue = drawDates.filter(d=>d<today).length;
-      const thisWeek = drawDates.filter(d=>{ const diff=(d-today)/(1000*60*60*24); return diff>=0&&diff<=7; }).length;
+      const drawDates = drawings.filter(d=>d.project_id===p.id&&d.due_date).map(d=>parseDate(d.due_date));
+      const blDates   = allBacklogData.filter(b=>b.project_id===p.id&&b.due_date&&!b.done).map(b=>parseDate(b.due_date));
+      const allDates  = [...drawDates, ...blDates];
+      const overdue   = allDates.filter(d=>d<today).length;
+      const thisWeek  = allDates.filter(d=>{ const diff=(d-today)/(1000*60*60*24); return diff>=0&&diff<=7; }).length;
       statsMap[p.id]={draws:dIds.length,total,done,pct,blPend,pendTotal,overdue,thisWeek,dIds};
     }
   }
@@ -617,17 +619,29 @@ async function renderHome() {
   const totWeek    = ativos.reduce((a,p)=>(statsMap[p.id]?.thisWeek||0)+a,0);
 
   // ── PRAZOS ALERTAS ──
+  const parseDate = s => { const [y,m,d]=s.split('-'); return new Date(y,m-1,d); };
   const alertDraws = allDrawingsData
     .filter(d=>{ const p=projects.find(x=>x.id===d.project_id); return (p?.status||'ativo')==='ativo' && d.due_date; })
     .map(d=>{
       const proj = projects.find(x=>x.id===d.project_id);
-      const dt   = new Date(d.due_date);
+      const dt   = parseDate(d.due_date);
       const diff = Math.round((dt-today)/(1000*60*60*24));
-      return {...d, projName:proj?.name||'', diff};
-    })
+      return {...d, projName:proj?.name||'', diff, label:d.code};
+    });
+
+  const alertBacklog = allBacklogData
+    .filter(b=>{ const p=projects.find(x=>x.id===b.project_id); return (p?.status||'ativo')==='ativo' && b.due_date && !b.done; })
+    .map(b=>{
+      const proj = projects.find(x=>x.id===b.project_id);
+      const dt   = parseDate(b.due_date);
+      const diff = Math.round((dt-today)/(1000*60*60*24));
+      return {...b, projName:proj?.name||'', diff, label:b.text};
+    });
+
+  const alertAll = [...alertDraws, ...alertBacklog]
     .filter(d=>d.diff<=7)
     .sort((a,b)=>a.diff-b.diff)
-    .slice(0,8);
+    .slice(0,12);
 
   // ── PENDENCIAS CONSOLIDADAS ──
   const pendConsolidated = allPendsData.map(pd=>{
@@ -722,15 +736,15 @@ async function renderHome() {
     </div>
 
     <!-- ALERTAS DE PRAZO -->
-    ${alertDraws.length?`
+    ${alertAll.length?`
     <div class="dash-section">
       <div class="dash-section-hdr"><span class="sec-tag" style="color:#f97316;background:rgba(249,115,22,.08);border-color:rgba(249,115,22,.2)">Prazos</span><span class="sec-title">Radar de Urgência</span><div class="sec-line"></div></div>
       <div class="alert-list">
-        ${alertDraws.map(d=>{
+        ${alertAll.map(d=>{
           const cls = d.diff<0?'overdue':d.diff<=2?'urgent':'warning';
           const lbl = d.diff<0?`${Math.abs(d.diff)}d vencido`:d.diff===0?'Hoje':d.diff===1?'Amanhã':`${d.diff}d restantes`;
           return `<div class="alert-item ${cls}" onclick="loadProject('${d.project_id}')">
-            <div class="alert-code">${esc(d.code)}</div>
+            <div class="alert-code">${esc(d.label||d.code||d.text||'')}</div>
             <div class="alert-proj">${esc(d.projName)}</div>
             <div class="alert-badge">${lbl}</div>
           </div>`;
@@ -910,7 +924,7 @@ function buildMatrix() {
           <div class="draw-code">${esc(d.code)}</div>
           <button class="pend-btn ${hasPend?'active':''}" onclick="openPend('drawing','${d.id}','${esc(d.code)}')" title="Pendências">!${hasPend?`<span class="pend-count">${pds.length}</span>`:''}</button>
         </div>
-        ${d.due_date?`<div class="draw-date">📅 ${fmtDate(d.due_date)}</div>`:''}
+        ${d.due_date?`<div class="draw-date" style="${dateCls(d.due_date)}">📅 ${fmtDate(d.due_date)}</div>`:''}
         <div class="draw-actions">
           <button class="draw-btn" onclick="editDraw('${d.id}')">✏️ Editar</button>
           <button class="draw-btn del" onclick="delDraw('${d.id}')">Remover</button>
@@ -935,7 +949,7 @@ function buildBacklog() {
           <span class="bl-text">${esc(b.text)}</span>
           <button class="pend-btn ${hasPend?'active':''}" onclick="openPend('backlog','${b.id}','${esc(b.text)}')" title="Pendências">!${hasPend?`<span class="pend-count">${pds.length}</span>`:''}</button>
         </div>
-        ${b.due_date?`<span class="bl-date">📅 ${fmtDate(b.due_date)}</span>`:''}
+        ${b.due_date?`<span class="bl-date" style="${dateCls(b.due_date)}">📅 ${fmtDate(b.due_date)}</span>`:''}
       </div>
       <div class="bl-actions">
         <button class="bl-btn" onclick="editBL('${b.id}')">✏️</button>
@@ -1664,7 +1678,22 @@ function updatePendBtn(refId) {
 
 document.getElementById('pendOverlay').addEventListener('click',e=>{ if(e.target.id==='pendOverlay') closePend(); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closePend(); });
-function fmtDate(d) { if (!d) return ''; const clean=d.substring(0,10); const [y,m,day]=clean.split('-'); return `${day}/${m}/${y}`; }
+function dateCls(dateStr) {
+  if (!dateStr) return '';
+  const [y,m,d] = dateStr.substring(0,10).split('-');
+  const dt = new Date(y,m-1,d);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const diff = (dt-today)/(1000*60*60*24);
+  if (diff < 0)  return 'color:var(--danger);font-weight:700';
+  if (diff <= 7) return 'color:#f97316;font-weight:700';
+  return '';
+}
+function fmtDate(d) {
+  if (!d) return '';
+  const clean=d.substring(0,10);
+  const [y,m,day]=clean.split('-');
+  return `${day}/${m}/${y}`;
+}
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function toast(msg,type='') { const el=document.getElementById('toast'); el.textContent=msg; el.className=`toast ${type} show`; setTimeout(()=>el.classList.remove('show'),2500); }
 
