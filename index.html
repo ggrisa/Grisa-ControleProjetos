@@ -214,6 +214,60 @@ body.flatpickr-open{overflow:hidden!important}
 .numInputWrapper input{color:var(--text)!important}
 .cur-month,.cur-year{color:var(--text)!important}
 
+/* DASHBOARD */
+.dash-summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:4px}
+.dash-sum-card{background:var(--surf);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.dash-sum-val{font-size:28px;font-weight:800;letter-spacing:-.04em;line-height:1;margin-bottom:4px}
+.dash-sum-lbl{font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.dash-section{display:flex;flex-direction:column;gap:10px}
+.dash-section-hdr{display:flex;align-items:center;gap:10px}
+
+/* ALERT PRAZOS */
+.alert-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.alert-item{padding:12px 14px;border-radius:9px;border:1px solid var(--border);background:var(--surf);cursor:pointer;transition:all .15s}
+.alert-item:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.alert-item.overdue{border-color:rgba(255,88,88,.4);background:rgba(255,88,88,.05)}
+.alert-item.urgent{border-color:rgba(249,115,22,.4);background:rgba(249,115,22,.05)}
+.alert-item.warning{border-color:rgba(234,179,8,.3);background:rgba(234,179,8,.04)}
+.alert-code{font-size:14px;font-weight:800;color:var(--accent);margin-bottom:3px;font-family:'DM Mono',monospace}
+.alert-proj{font-size:11px;color:var(--muted);margin-bottom:6px}
+.alert-badge{font-size:11px;font-weight:700;font-family:'DM Mono',monospace}
+.alert-item.overdue .alert-badge{color:var(--danger)}
+.alert-item.urgent .alert-badge{color:#f97316}
+.alert-item.warning .alert-badge{color:#eab308}
+
+/* PROGRESS BARS */
+.progress-bars{display:flex;flex-direction:column;gap:10px;background:var(--surf);border:1px solid var(--border);border-radius:10px;padding:16px 20px}
+.pbar-row{display:flex;align-items:center;gap:12px;cursor:pointer;transition:opacity .15s}
+.pbar-row:hover{opacity:.8}
+.pbar-label{font-size:13px;font-weight:700;width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.pbar-track{flex:1;height:10px;background:var(--border);border-radius:5px;overflow:hidden}
+.pbar-fill{height:100%;background:linear-gradient(90deg,#1a6fd4,#00c2ff);border-radius:5px;transition:width .4s}
+.pbar-pct{font-size:12px;font-family:'DM Mono',monospace;color:var(--accent);font-weight:700;width:40px;text-align:right;flex-shrink:0}
+
+/* GANTT */
+.gantt-wrap{background:var(--surf);border:1px solid var(--border);border-radius:10px;padding:16px 20px;display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden}
+.gantt-today{position:absolute;top:0;bottom:0;width:2px;background:rgba(255,88,88,.6);z-index:2;pointer-events:none}
+.gantt-row{display:flex;align-items:center;gap:12px;cursor:pointer;transition:opacity .15s}
+.gantt-row:hover{opacity:.8}
+.gantt-label{font-size:13px;font-weight:700;width:160px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gantt-track{flex:1;height:26px;background:var(--surf2);border-radius:6px;position:relative;overflow:hidden}
+.gantt-bar{position:absolute;top:3px;height:20px;border-radius:4px;background:rgba(26,111,212,.3);border:1px solid rgba(0,194,255,.3);overflow:hidden;display:flex;align-items:center;min-width:4px}
+.gantt-bar.late{background:rgba(255,88,88,.2);border-color:rgba(255,88,88,.4)}
+.gantt-bar-fill{height:100%;background:linear-gradient(90deg,#1a6fd4,#00c2ff);border-radius:3px;transition:width .4s}
+.gantt-bar.late .gantt-bar-fill{background:linear-gradient(90deg,#ff5858,#ff8888)}
+.gantt-bar-label{position:absolute;right:6px;font-size:10px;font-weight:700;color:#fff;font-family:'DM Mono',monospace;white-space:nowrap}
+.gantt-dates{display:flex;justify-content:space-between;font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);padding:0 0 0 172px}
+
+/* PENDENCIAS CONSOLIDADAS */
+.pend-consolidated{background:var(--surf);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.pend-cons-item{display:flex;align-items:flex-start;gap:12px;padding:11px 16px;border-bottom:1px solid var(--border);transition:background .12s}
+.pend-cons-item:last-child{border-bottom:none}
+.pend-cons-item:hover{background:var(--surf2)}
+.pend-cons-dot{width:8px;height:8px;border-radius:50%;background:#f97316;flex-shrink:0;margin-top:5px}
+.pend-cons-desc{font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px}
+.pend-cons-ref{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted)}
+
 /* PROJECT CARDS HOME */
 .home-header{padding:8px 0 20px;display:flex;align-items:center;justify-content:space-between}
 .home-header h2{font-size:26px;font-weight:800;letter-spacing:-.03em}
@@ -444,135 +498,229 @@ async function renderHome() {
   document.getElementById('topActions').style.display='none';
   document.getElementById('editProjBtn').style.display='none';
 
-  // load stats for all projects
+  document.getElementById('content').innerHTML=`<div class="spin-wrap"><div class="spinner"></div></div>`;
+
   let statsMap = {};
+  let allPendsData = [];
+  let allBacklogData = [];
+  let allDrawingsData = [];
+
   if (projects.length) {
     const allPids = projects.map(p=>p.id);
-
     const [drRes, colRes, taskRes, blRes, pendRes] = await Promise.all([
-      db.from('drawings').select('id,project_id').in('project_id', allPids),
+      db.from('drawings').select('id,project_id,code,due_date').in('project_id', allPids),
       db.from('columns').select('id,project_id').in('project_id', allPids),
       db.from('tasks').select('drawing_id,done'),
-      db.from('backlog').select('id,project_id,done').in('project_id', allPids),
-      db.from('pendencias').select('ref_id'),
+      db.from('backlog').select('id,project_id,done,text').in('project_id', allPids),
+      db.from('pendencias').select('id,ref_id,descricao,ref_type'),
     ]);
 
     const drawings   = drRes.data||[];
     const columns    = colRes.data||[];
     const allTasks   = taskRes.data||[];
-    const allBacklog = blRes.data||[];
-    const allPends   = pendRes.data||[];
+    allBacklogData   = blRes.data||[];
+    allPendsData     = pendRes.data||[];
+    allDrawingsData  = drawings;
 
-    // index drawings per project
-    const drawsByProj = {};
-    for (const d of drawings) {
-      if (!drawsByProj[d.project_id]) drawsByProj[d.project_id]=[];
-      drawsByProj[d.project_id].push(d.id);
-    }
-
-    // cols per project
-    const colsByProj = {};
-    for (const c of columns) {
-      if (!colsByProj[c.project_id]) colsByProj[c.project_id]=0;
-      colsByProj[c.project_id]++;
-    }
-
-    // tasks done per drawing
-    const taskDoneByDraw = {};
-    for (const t of allTasks) {
-      if (!taskDoneByDraw[t.drawing_id]) taskDoneByDraw[t.drawing_id]=0;
-      if (t.done) taskDoneByDraw[t.drawing_id]++;
-    }
-
-    // pends per drawing/backlog id
-    const pendSet = new Set(allPends.map(p=>p.ref_id));
+    const drawsByProj={}, colsByProj={}, taskDoneByDraw={};
+    for (const d of drawings) { if(!drawsByProj[d.project_id]) drawsByProj[d.project_id]=[]; drawsByProj[d.project_id].push(d.id); }
+    for (const c of columns)  { if(!colsByProj[c.project_id]) colsByProj[c.project_id]=0; colsByProj[c.project_id]++; }
+    for (const t of allTasks) { if(!taskDoneByDraw[t.drawing_id]) taskDoneByDraw[t.drawing_id]=0; if(t.done) taskDoneByDraw[t.drawing_id]++; }
 
     for (const p of projects) {
-      const dIds    = drawsByProj[p.id]||[];
-      const numCols = colsByProj[p.id]||0;
-      const total   = dIds.length * numCols;
-      const done    = dIds.reduce((a,did)=>a+(taskDoneByDraw[did]||0),0);
-      const pct     = total>0?Math.round(done/total*100):0;
-      const blPend  = (allBacklog.filter(b=>b.project_id===p.id&&!b.done)).length;
-
-      // IDs do backlog deste projeto
-      const blIds = allBacklog.filter(b=>b.project_id===p.id).map(b=>b.id);
-
-      // contar todas as pendencias de desenhos E backlog deste projeto
-      const pendTotal = allPends.filter(pd=>
-        dIds.includes(pd.ref_id) || blIds.includes(pd.ref_id)
-      ).length;
-
-      statsMap[p.id] = { draws: dIds.length, total, done, pct, blPend, pendTotal };
+      const dIds   = drawsByProj[p.id]||[];
+      const numCols= colsByProj[p.id]||0;
+      const total  = dIds.length*numCols;
+      const done   = dIds.reduce((a,did)=>a+(taskDoneByDraw[did]||0),0);
+      const pct    = total>0?Math.round(done/total*100):0;
+      const blPend = allBacklogData.filter(b=>b.project_id===p.id&&!b.done).length;
+      const blIds  = allBacklogData.filter(b=>b.project_id===p.id).map(b=>b.id);
+      const pendTotal = allPendsData.filter(pd=>dIds.includes(pd.ref_id)||blIds.includes(pd.ref_id)).length;
+      // prazos
+      const today = new Date(); today.setHours(0,0,0,0);
+      const drawDates = drawings.filter(d=>d.project_id===p.id&&d.due_date).map(d=>new Date(d.due_date));
+      const overdue = drawDates.filter(d=>d<today).length;
+      const thisWeek = drawDates.filter(d=>{ const diff=(d-today)/(1000*60*60*24); return diff>=0&&diff<=7; }).length;
+      statsMap[p.id]={draws:dIds.length,total,done,pct,blPend,pendTotal,overdue,thisWeek,dIds};
     }
   }
 
-  const ativos    = projects.filter(p=>(p.status||'ativo')==='ativo');
-  const concluidos = projects.filter(p=>p.status==='concluido');
+  const ativos = projects.filter(p=>(p.status||'ativo')==='ativo');
+  const today  = new Date(); today.setHours(0,0,0,0);
 
-  const cardHTML = (list) => {
-    if (!list.length) return `<div class="home-empty"><div style="font-size:30px;opacity:.3">📁</div><div style="font-size:14px;font-weight:700;color:var(--silver)">Nenhum projeto aqui</div></div>`;
-    return list.map(p=>{
-      const s = statsMap[p.id]||{draws:0,total:0,done:0,pct:0,blPend:0,pendTotal:0};
-      return `
-      <div class="proj-card" onclick="loadProject('${p.id}')">
-        <div class="proj-card-top">
-          <div>
-            <div class="proj-card-name">${esc(p.name)}</div>
-            <div class="proj-card-code">${p.code||'Sem código'}</div>
+  // ── SUMMARY TOTALS ──
+  const totDraws   = ativos.reduce((a,p)=>(statsMap[p.id]?.draws||0)+a,0);
+  const totDone    = ativos.reduce((a,p)=>(statsMap[p.id]?.done||0)+a,0);
+  const totTotal   = ativos.reduce((a,p)=>(statsMap[p.id]?.total||0)+a,0);
+  const totPends   = ativos.reduce((a,p)=>(statsMap[p.id]?.pendTotal||0)+a,0);
+  const totPct     = totTotal>0?Math.round(totDone/totTotal*100):0;
+  const totOverdue = ativos.reduce((a,p)=>(statsMap[p.id]?.overdue||0)+a,0);
+  const totWeek    = ativos.reduce((a,p)=>(statsMap[p.id]?.thisWeek||0)+a,0);
+
+  // ── PRAZOS ALERTAS ──
+  const alertDraws = allDrawingsData
+    .filter(d=>{ const p=projects.find(x=>x.id===d.project_id); return (p?.status||'ativo')==='ativo' && d.due_date; })
+    .map(d=>{
+      const proj = projects.find(x=>x.id===d.project_id);
+      const dt   = new Date(d.due_date);
+      const diff = Math.round((dt-today)/(1000*60*60*24));
+      return {...d, projName:proj?.name||'', diff};
+    })
+    .filter(d=>d.diff<=7)
+    .sort((a,b)=>a.diff-b.diff)
+    .slice(0,8);
+
+  // ── PENDENCIAS CONSOLIDADAS ──
+  const pendConsolidated = allPendsData.map(pd=>{
+    const draw = allDrawingsData.find(d=>d.id===pd.ref_id);
+    const bl   = allBacklogData.find(b=>b.id===pd.ref_id);
+    const ref  = draw||bl;
+    const proj = ref ? projects.find(p=>p.id===ref.project_id) : null;
+    return {...pd, refLabel: draw?draw.code : bl?bl.text:'?', projName: proj?.name||'?'};
+  }).filter(pd=>{
+    const ref = allDrawingsData.find(d=>d.id===pd.ref_id)||allBacklogData.find(b=>b.id===pd.ref_id);
+    const proj = ref?projects.find(p=>p.id===ref.project_id):null;
+    return (proj?.status||'ativo')==='ativo';
+  });
+
+  // ── GANTT ──
+  const ganttProjs = ativos.filter(p=>p.start_date&&p.end_date);
+  let ganttHTML = '';
+  if (ganttProjs.length) {
+    const minDate = new Date(Math.min(...ganttProjs.map(p=>new Date(p.start_date))));
+    const maxDate = new Date(Math.max(...ganttProjs.map(p=>new Date(p.end_date))));
+    const totalDays = Math.max(1,(maxDate-minDate)/(1000*60*60*24));
+    const todayPct  = Math.min(100,Math.max(0,(today-minDate)/(1000*60*60*24)/totalDays*100));
+    ganttHTML = `
+      <div class="dash-section">
+        <div class="dash-section-hdr"><span class="sec-tag">Gantt</span><span class="sec-title">Linha do Tempo</span><div class="sec-line"></div></div>
+        <div class="gantt-wrap">
+          <div class="gantt-today" style="left:${todayPct}%" title="Hoje"></div>
+          ${ganttProjs.map(p=>{
+            const s=new Date(p.start_date), e=new Date(p.end_date);
+            const left=((s-minDate)/(1000*60*60*24)/totalDays*100).toFixed(1);
+            const width=Math.max(2,((e-s)/(1000*60*60*24)/totalDays*100)).toFixed(1);
+            const pct=statsMap[p.id]?.pct||0;
+            const isLate=e<today&&pct<100;
+            return `<div class="gantt-row" onclick="loadProject('${p.id}')">
+              <div class="gantt-label">${esc(p.name)}</div>
+              <div class="gantt-track">
+                <div class="gantt-bar ${isLate?'late':''}" style="left:${left}%;width:${width}%">
+                  <div class="gantt-bar-fill" style="width:${pct}%"></div>
+                  <span class="gantt-bar-label">${pct}%</span>
+                </div>
+              </div>
+            </div>`;
+          }).join('')}
+          <div class="gantt-dates">
+            <span>${fmtDate(minDate.toISOString().slice(0,10))}</span>
+            <span>Hoje</span>
+            <span>${fmtDate(maxDate.toISOString().slice(0,10))}</span>
           </div>
+        </div>
+      </div>`;
+  }
+
+  // ── CARD HTML ──
+  const cardHTML = (list) => {
+    if (!list.length) return `<div class="home-empty"><div style="font-size:30px;opacity:.3">📁</div><div style="font-size:14px;font-weight:700;color:var(--silver)">Nenhum projeto ativo</div></div>`;
+    return list.map(p=>{
+      const s=statsMap[p.id]||{draws:0,total:0,done:0,pct:0,blPend:0,pendTotal:0,overdue:0,thisWeek:0};
+      return `<div class="proj-card" onclick="loadProject('${p.id}')">
+        <div class="proj-card-top">
+          <div><div class="proj-card-name">${esc(p.name)}</div><div class="proj-card-code">${p.code||'Sem código'}</div></div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
-            <span class="proj-card-status ${p.status||'ativo'}">${p.status==='concluido'?'Concluído':'Ativo'}</span>
-            ${p.status!=='concluido'?`<button onclick="event.stopPropagation();concluirProject('${p.id}')" style="font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:'Syne',sans-serif;font-weight:600;transition:all .15s" onmouseover="this.style.borderColor='#4ade80';this.style.color='#4ade80'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">✓ Concluir</button>`:''}
+            <span class="proj-card-status ativo">Ativo</span>
+            <button onclick="event.stopPropagation();concluirProject('${p.id}')" style="font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:'Syne',sans-serif;font-weight:600;transition:all .15s" onmouseover="this.style.borderColor='#4ade80';this.style.color='#4ade80'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">✓ Concluir</button>
           </div>
         </div>
         <div class="proj-card-dates">
-          <div class="proj-card-date">
-            <span class="proj-card-date-lbl">Início</span>
-            <span class="proj-card-date-val">${p.start_date?fmtDate(p.start_date):'—'}</span>
-          </div>
-          <div class="proj-card-date">
-            <span class="proj-card-date-lbl">Término</span>
-            <span class="proj-card-date-val">${p.end_date?fmtDate(p.end_date):'—'}</span>
-          </div>
+          <div class="proj-card-date"><span class="proj-card-date-lbl">Início</span><span class="proj-card-date-val">${p.start_date?fmtDate(p.start_date):'—'}</span></div>
+          <div class="proj-card-date"><span class="proj-card-date-lbl">Término</span><span class="proj-card-date-val">${p.end_date?fmtDate(p.end_date):'—'}</span></div>
+          ${s.overdue>0?`<div class="proj-card-date"><span class="proj-card-date-lbl" style="color:var(--danger)">Vencidos</span><span class="proj-card-date-val" style="color:var(--danger)">${s.overdue}</span></div>`:''}
+          ${s.thisWeek>0?`<div class="proj-card-date"><span class="proj-card-date-lbl" style="color:#f97316">Esta semana</span><span class="proj-card-date-val" style="color:#f97316">${s.thisWeek}</span></div>`:''}
         </div>
         <div class="proj-card-bar-bg"><div class="proj-card-bar-fill" style="width:${s.pct}%"></div></div>
         <div class="proj-card-stats">
-          <div class="proj-card-stat desenhos">
-            <div class="proj-card-stat-val">${s.draws}</div>
-            <div class="proj-card-stat-lbl">Desenhos</div>
-          </div>
-          <div class="proj-card-stat tarefas">
-            <div class="proj-card-stat-val">${s.done}<span style="font-size:13px;color:var(--muted)">/${s.total}</span></div>
-            <div class="proj-card-stat-lbl">Tarefas</div>
-          </div>
-          <div class="proj-card-stat progresso">
-            <div class="proj-card-stat-val">${s.pct}<span style="font-size:13px">%</span></div>
-            <div class="proj-card-stat-lbl">Progresso</div>
-          </div>
-          <div class="proj-card-stat backlog">
-            <div class="proj-card-stat-val">${s.blPend}</div>
-            <div class="proj-card-stat-lbl">Backlog</div>
-          </div>
+          <div class="proj-card-stat desenhos"><div class="proj-card-stat-val">${s.draws}</div><div class="proj-card-stat-lbl">Desenhos</div></div>
+          <div class="proj-card-stat tarefas"><div class="proj-card-stat-val">${s.done}<span style="font-size:13px;color:var(--muted)">/${s.total}</span></div><div class="proj-card-stat-lbl">Tarefas</div></div>
+          <div class="proj-card-stat progresso"><div class="proj-card-stat-val">${s.pct}<span style="font-size:13px">%</span></div><div class="proj-card-stat-lbl">Progresso</div></div>
+          <div class="proj-card-stat backlog"><div class="proj-card-stat-val">${s.blPend}</div><div class="proj-card-stat-lbl">Backlog</div></div>
         </div>
         ${s.pendTotal>0?`<div class="proj-card-pend"><div class="proj-card-pend-val">⚠ ${s.pendTotal}</div><div class="proj-card-pend-lbl">Pendência${s.pendTotal!==1?'s':''} em aberto</div></div>`:''}
       </div>`;}).join('');
   };
 
   document.getElementById('content').innerHTML=`
-    <div class="home-header">
-      <div>
-        <h2>Projetos Ativos</h2>
-        <p>${ativos.length} ativo${ativos.length!==1?'s':''} · ${concluidos.length} concluído${concluidos.length!==1?'s':''}</p>
+    <!-- SUMMARY -->
+    <div class="dash-summary">
+      <div class="dash-sum-card"><div class="dash-sum-val">${ativos.length}</div><div class="dash-sum-lbl">Projetos ativos</div></div>
+      <div class="dash-sum-card"><div class="dash-sum-val">${totDraws}</div><div class="dash-sum-lbl">Desenhos totais</div></div>
+      <div class="dash-sum-card"><div class="dash-sum-val" style="color:var(--accent)">${totPct}%</div><div class="dash-sum-lbl">Progresso geral</div></div>
+      <div class="dash-sum-card"><div class="dash-sum-val" style="color:${totPends>0?'#f97316':'var(--muted)'}">${totPends}</div><div class="dash-sum-lbl">Pendências abertas</div></div>
+      <div class="dash-sum-card"><div class="dash-sum-val" style="color:${totOverdue>0?'var(--danger)':'var(--muted)'}">${totOverdue}</div><div class="dash-sum-lbl">Desenhos vencidos</div></div>
+      <div class="dash-sum-card"><div class="dash-sum-val" style="color:${totWeek>0?'#f97316':'var(--muted)'}">${totWeek}</div><div class="dash-sum-lbl">Vencem esta semana</div></div>
+    </div>
+
+    <!-- ALERTAS DE PRAZO -->
+    ${alertDraws.length?`
+    <div class="dash-section">
+      <div class="dash-section-hdr"><span class="sec-tag" style="color:#f97316;background:rgba(249,115,22,.08);border-color:rgba(249,115,22,.2)">Prazos</span><span class="sec-title">Radar de Urgência</span><div class="sec-line"></div></div>
+      <div class="alert-list">
+        ${alertDraws.map(d=>{
+          const cls = d.diff<0?'overdue':d.diff<=2?'urgent':'warning';
+          const lbl = d.diff<0?`${Math.abs(d.diff)}d vencido`:d.diff===0?'Hoje':d.diff===1?'Amanhã':`${d.diff}d restantes`;
+          return `<div class="alert-item ${cls}" onclick="loadProject('${d.project_id}')">
+            <div class="alert-code">${esc(d.code)}</div>
+            <div class="alert-proj">${esc(d.projName)}</div>
+            <div class="alert-badge">${lbl}</div>
+          </div>`;
+        }).join('')}
       </div>
-      <button class="btn btn-primary btn-sm" onclick="openModal('project')">+ Novo Projeto</button>
+    </div>`:''}
+
+    <!-- PROGRESSO POR PROJETO -->
+    <div class="dash-section">
+      <div class="dash-section-hdr"><span class="sec-tag">Progresso</span><span class="sec-title">Comparativo de Projetos</span><div class="sec-line"></div></div>
+      <div class="progress-bars">
+        ${ativos.map(p=>{
+          const s=statsMap[p.id]||{pct:0,draws:0};
+          return `<div class="pbar-row" onclick="loadProject('${p.id}')">
+            <div class="pbar-label">${esc(p.name)}</div>
+            <div class="pbar-track"><div class="pbar-fill" style="width:${s.pct}%"></div></div>
+            <div class="pbar-pct">${s.pct}%</div>
+          </div>`;
+        }).join('')}
+      </div>
     </div>
-    <div class="proj-cards">${cardHTML(ativos)}</div>
-    ${concluidos.length?`
-    <div class="home-header" style="margin-top:24px">
-      <div><h2 style="font-size:18px">Projetos Concluídos</h2></div>
+
+    <!-- GANTT -->
+    ${ganttHTML}
+
+    <!-- PENDENCIAS CONSOLIDADAS -->
+    ${pendConsolidated.length?`
+    <div class="dash-section">
+      <div class="dash-section-hdr"><span class="sec-tag" style="color:#f97316;background:rgba(249,115,22,.08);border-color:rgba(249,115,22,.2)">Pendências</span><span class="sec-title">Todas as Pendências Abertas</span><div class="sec-line"></div></div>
+      <div class="pend-consolidated">
+        ${pendConsolidated.map(pd=>`
+          <div class="pend-cons-item">
+            <div class="pend-cons-dot"></div>
+            <div class="pend-cons-info">
+              <div class="pend-cons-desc">${esc(pd.descricao)}</div>
+              <div class="pend-cons-ref">${esc(pd.projName)} · ${esc(pd.refLabel)}</div>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`:''}
+
+    <!-- PROJETOS -->
+    <div class="dash-section">
+      <div class="dash-section-hdr">
+        <span class="sec-tag">Projetos</span><span class="sec-title">Projetos Ativos</span><div class="sec-line"></div>
+        <button class="btn btn-primary btn-sm" onclick="openModal('project')">+ Novo Projeto</button>
+      </div>
+      <div class="proj-cards">${cardHTML(ativos)}</div>
     </div>
-    <div class="proj-cards">${cardHTML(concluidos)}</div>`:''}
   `;
 }
 
