@@ -494,11 +494,14 @@ async function renderHome() {
       const done    = dIds.reduce((a,did)=>a+(taskDoneByDraw[did]||0),0);
       const pct     = total>0?Math.round(done/total*100):0;
       const blPend  = (allBacklog.filter(b=>b.project_id===p.id&&!b.done)).length;
-      // count pendencias for this project's drawings + backlog
-      const pendCount = [...dIds].filter(id=>pendSet.has(id)).length +
-        allBacklog.filter(b=>b.project_id===p.id&&pendSet.has(b.id)).length;
-      // actually count all pend entries not just refs
-      const pendTotal = allPends.filter(pd=>dIds.includes(pd.ref_id)||allBacklog.some(b=>b.project_id===p.id&&b.id===pd.ref_id)).length;
+
+      // IDs do backlog deste projeto
+      const blIds = allBacklog.filter(b=>b.project_id===p.id).map(b=>b.id);
+
+      // contar todas as pendencias de desenhos E backlog deste projeto
+      const pendTotal = allPends.filter(pd=>
+        dIds.includes(pd.ref_id) || blIds.includes(pd.ref_id)
+      ).length;
 
       statsMap[p.id] = { draws: dIds.length, total, done, pct, blPend, pendTotal };
     }
