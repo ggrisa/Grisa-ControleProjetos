@@ -257,7 +257,14 @@ body.flatpickr-open{overflow:hidden!important}
 .gantt-row:hover{opacity:.8}
 .gantt-label{font-size:13px;font-weight:700;width:160px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gantt-track{flex:1;height:26px;background:var(--surf2);border-radius:6px;position:relative;overflow:hidden}
-.gantt-bar{position:absolute;top:3px;height:20px;border-radius:4px;background:rgba(26,111,212,.3);border:1px solid rgba(0,194,255,.3);overflow:hidden;display:flex;align-items:center;min-width:4px}
+.gantt-drag-handle{position:absolute;top:0;width:10px;height:100%;cursor:ew-resize;z-index:3;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s}
+.gantt-drag-handle::after{content:'';width:2px;height:60%;background:rgba(255,255,255,.6);border-radius:1px}
+.gantt-drag-handle.left{left:0;border-radius:4px 0 0 4px}
+.gantt-drag-handle.right{right:0;border-radius:0 4px 4px 0}
+.gantt-bar:hover .gantt-drag-handle{opacity:1}
+.gantt-bar{cursor:pointer}
+.gantt-bar:hover{filter:brightness(1.15)}
+.gantt-bar{position:absolute;top:3px;height:20px;border-radius:4px;background:rgba(26,111,212,.3);border:1px solid rgba(0,194,255,.3);display:flex;align-items:center;min-width:8px;cursor:pointer}
 .gantt-bar.late{background:rgba(255,88,88,.2);border-color:rgba(255,88,88,.4)}
 .gantt-bar-fill{height:100%;background:linear-gradient(90deg,#1a6fd4,#00c2ff);border-radius:3px;transition:width .4s}
 .gantt-bar.late .gantt-bar-fill{background:linear-gradient(90deg,#ff5858,#ff8888)}
@@ -694,27 +701,42 @@ async function renderHomeDashboard() {
   const ganttProjs = filtered.filter(p=>p.start_date&&p.end_date);
   let ganttHTML = '';
   if (ganttProjs.length) {
-    const minDate = new Date(Math.min(...ganttProjs.map(p=>new Date(p.start_date))));
-    const maxDate = new Date(Math.max(...ganttProjs.map(p=>new Date(p.end_date))));
+    const parseGDate = s => { const [y,m,d]=s.substring(0,10).split('-').map(Number); return new Date(y,m-1,d); };
+    const minDate = new Date(Math.min(...ganttProjs.map(p=>parseGDate(p.start_date))));
+    const maxDate = new Date(Math.max(...ganttProjs.map(p=>parseGDate(p.end_date))));
+    // add padding
+    minDate.setDate(minDate.getDate()-3);
+    maxDate.setDate(maxDate.getDate()+3);
     const totalDays = Math.max(1,(maxDate-minDate)/(1000*60*60*24));
     const todayPct  = Math.min(100,Math.max(0,(today-minDate)/(1000*60*60*24)/totalDays*100));
     ganttHTML = `
       <div class="dash-section">
         <div class="dash-section-hdr"><span class="sec-tag">Gantt</span><span class="sec-title">Linha do Tempo</span><div class="sec-line"></div></div>
-        <div class="gantt-wrap">
+        <div class="gantt-wrap" id="ganttWrap">
           <div class="gantt-today" style="left:${todayPct}%" title="Hoje"></div>
           ${ganttProjs.map(p=>{
-            const s=new Date(p.start_date), e=new Date(p.end_date);
-            const left=((s-minDate)/(1000*60*60*24)/totalDays*100).toFixed(1);
-            const width=Math.max(2,((e-s)/(1000*60*60*24)/totalDays*100)).toFixed(1);
+            const s=parseGDate(p.start_date), e=parseGDate(p.end_date);
+            const left=((s-minDate)/(1000*60*60*24)/totalDays*100).toFixed(2);
+            const width=Math.max(1,((e-s)/(1000*60*60*24)/totalDays*100)).toFixed(2);
             const pct=statsMap[p.id]?.pct||0;
             const isLate=e<today&&pct<100;
-            return `<div class="gantt-row" onclick="loadProject('${p.id}')">
-              <div class="gantt-label">${esc(p.name)}</div>
-              <div class="gantt-track">
-                <div class="gantt-bar ${isLate?'late':''}" style="left:${left}%;width:${width}%">
+            return `<div class="gantt-row">
+              <div class="gantt-label" title="${esc(p.name)}">${esc(p.name)}</div>
+              <div class="gantt-track" data-proj-id="${p.id}" data-min="${minDate.getTime()}" data-min-ms="${minDate.getTime()}" data-total="${totalDays}">
+                <div class="gantt-bar ${isLate?'late':''}"
+                  id="gbar-${p.id}"
+                  style="left:${left}%;width:${width}%"
+                  data-proj-id="${p.id}"
+                  data-start="${p.start_date.substring(0,10)}"
+                  data-end="${p.end_date.substring(0,10)}"
+                  onclick="ganttBarClick(event,'${p.id}')"
+                  onmousedown="ganttBarMoveStart(event,'${p.id}')"
+                  ontouchstart="ganttBarMoveStart(event,'${p.id}')"
+                >
+                  <div class="gantt-drag-handle left" onmousedown="ganttDragStart(event,'${p.id}','left')" ontouchstart="ganttDragStart(event,'${p.id}','left')"></div>
                   <div class="gantt-bar-fill" style="width:${pct}%"></div>
-                  <span class="gantt-bar-label">${pct}%</span>
+                  <span class="gantt-bar-label">${pct}% · ${fmtDate(p.start_date)} → ${fmtDate(p.end_date)}</span>
+                  <div class="gantt-drag-handle right" onmousedown="ganttDragStart(event,'${p.id}','right')" ontouchstart="ganttDragStart(event,'${p.id}','right')"></div>
                 </div>
               </div>
             </div>`;
@@ -1372,13 +1394,22 @@ async function confirmModal() {
     if (modalType==='editProjDates') {
       const f3=document.getElementById('f3')?.value?.trim();
       const f4=document.getElementById('f4')?.value?.trim();
+      const origStart = activeProj.start_date;
+      const origEnd   = activeProj.end_date;
       await db.from('projects').update({start_date:f3||null,end_date:f4||null}).eq('id',activeProj.id);
       activeProj.start_date=f3||null;
       activeProj.end_date=f4||null;
       const p=projects.find(x=>x.id===activeProj.id);
       if(p){p.start_date=f3||null;p.end_date=f4||null;}
       toast('Datas atualizadas!','ok');
-      closeModal(); return;
+      closeModal();
+      // show undo option
+      if ((f3&&f3!==origStart)||(f4&&f4!==origEnd)) {
+        showGanttConfirmBar(activeProj.id, origStart||'', origEnd||'', f3||'', f4||'');
+        // already saved so confirm just hides
+        _ganttPending._alreadySaved = true;
+      }
+      return;
     }
 
     if (modalType==='project') {
@@ -1458,6 +1489,161 @@ async function confirmModal() {
     closeModal();
     renderAll();
   } catch(e) { toast('Erro ao salvar','err'); console.error(e); }
+}
+
+// ── GANTT INTERACTIONS ──
+let _ganttPending = null; // {projId, origStart, origEnd, newStart, newEnd}
+
+function ganttBarClick(e, projId) {
+  if (window._ganttDragging) return;
+  e.stopPropagation();
+  const p = projects.find(x=>x.id===projId);
+  if (!p) return;
+  activeProj = p;
+  openModal('editProjDates');
+  setTimeout(()=>{
+    initDatePicker('f3', p.start_date||'');
+    initDatePicker('f4', p.end_date||'');
+  },100);
+}
+
+function showGanttConfirmBar(projId, origStart, origEnd, newStart, newEnd) {
+  _ganttPending = {projId, origStart, origEnd, newStart, newEnd};
+  let bar = document.getElementById('ganttConfirmBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'ganttConfirmBar';
+    bar.style.cssText = `position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:var(--surf);border:1px solid var(--accent);border-radius:10px;padding:12px 20px;display:flex;align-items:center;gap:12px;z-index:500;box-shadow:0 8px 24px rgba(0,0,0,.4);font-family:'Syne',sans-serif;font-size:13px;font-weight:600`;
+    document.body.appendChild(bar);
+  }
+  const p = projects.find(x=>x.id===projId);
+  bar.innerHTML = `
+    <span style="color:var(--muted)">${esc(p?.name||'')}:</span>
+    <span style="color:var(--accent);font-family:'DM Mono',monospace;font-size:12px">${fmtDate(newStart)} → ${fmtDate(newEnd)}</span>
+    <button onclick="ganttConfirm()" style="background:linear-gradient(135deg,#1a6fd4,#00c2ff);color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:12px">✓ Confirmar</button>
+    <button onclick="ganttUndo()" style="background:transparent;color:var(--danger);border:1px solid var(--danger);border-radius:6px;padding:6px 14px;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;font-size:12px">↩ Desfazer</button>
+  `;
+}
+
+function hideGanttConfirmBar() {
+  document.getElementById('ganttConfirmBar')?.remove();
+  _ganttPending = null;
+}
+
+async function ganttConfirm() {
+  if (!_ganttPending) return;
+  if (!_ganttPending._alreadySaved) {
+    const {projId, newStart, newEnd} = _ganttPending;
+    await db.from('projects').update({start_date:newStart, end_date:newEnd}).eq('id',projId);
+    const p = projects.find(x=>x.id===projId);
+    if (p) { p.start_date=newStart; p.end_date=newEnd; }
+  }
+  hideGanttConfirmBar();
+  toast('Datas salvas!','ok');
+}
+
+async function ganttUndo() {
+  if (!_ganttPending) return;
+  const {projId, origStart, origEnd} = _ganttPending;
+  // revert in DB
+  await db.from('projects').update({start_date:origStart||null, end_date:origEnd||null}).eq('id',projId);
+  const p = projects.find(x=>x.id===projId);
+  if (p) { p.start_date=origStart||null; p.end_date=origEnd||null; }
+  // revert bar visually
+  const bar = document.getElementById(`gbar-${projId}`);
+  const track = bar?.closest('.gantt-track');
+  if (bar && track && origStart && origEnd) {
+    const totalDays = parseFloat(track.dataset.total);
+    const minMs = parseFloat(track.dataset.min);
+    const parseD = s=>{ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); };
+    const s = parseD(origStart), e = parseD(origEnd);
+    const left = ((s-new Date(minMs))/(1000*60*60*24)/totalDays*100).toFixed(2);
+    const width = Math.max(1,((e-s)/(1000*60*60*24)/totalDays*100)).toFixed(2);
+    bar.style.left=left+'%'; bar.style.width=width+'%';
+    bar.dataset.start=origStart; bar.dataset.end=origEnd;
+    const lbl = bar.querySelector('.gantt-bar-label');
+    if (lbl) lbl.textContent = `${bar.querySelector('.gantt-bar-fill')?.style.width||'0%'} · ${fmtDate(origStart)} → ${fmtDate(origEnd)}`;
+  }
+  hideGanttConfirmBar();
+  toast('Alteração desfeita','ok');
+}
+
+function ganttDragStart(e, projId, side) {
+  e.stopPropagation();
+  e.preventDefault();
+  window._ganttDragging = false;
+  const bar   = document.getElementById(`gbar-${projId}`);
+  const track = bar?.closest('.gantt-track');
+  if (!bar||!track) return;
+  const trackRect = track.getBoundingClientRect();
+  const totalDays = parseFloat(track.dataset.total);
+  const minMs     = parseFloat(track.dataset.min);
+  const startX    = e.touches?e.touches[0].clientX:e.clientX;
+  const origStart = bar.dataset.start;
+  const origEnd   = bar.dataset.end;
+  const parseD    = s=>{ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); };
+  let startDate   = parseD(origStart);
+  let endDate     = parseD(origEnd);
+
+  const onMove = ev => {
+    window._ganttDragging = true;
+    const cx = ev.touches?ev.touches[0].clientX:ev.clientX;
+    const dx = cx - startX;
+    const dayDelta = Math.round(dx / trackRect.width * totalDays);
+    if (side==='left') {
+      const nd = new Date(parseD(origStart)); nd.setDate(nd.getDate()+dayDelta);
+      if (nd>=parseD(origEnd)) return;
+      startDate = nd;
+      const left = ((nd-new Date(minMs))/(1000*60*60*24)/totalDays*100).toFixed(2);
+      const width = Math.max(1,((parseD(origEnd)-nd)/(1000*60*60*24)/totalDays*100)).toFixed(2);
+      bar.style.left=left+'%'; bar.style.width=width+'%';
+    } else if (side==='right') {
+      const nd = new Date(parseD(origEnd)); nd.setDate(nd.getDate()+dayDelta);
+      if (nd<=parseD(origStart)) return;
+      endDate = nd;
+      const width = Math.max(1,((nd-parseD(origStart))/(1000*60*60*24)/totalDays*100)).toFixed(2);
+      bar.style.width=width+'%';
+    } else {
+      // move whole bar
+      const ns = new Date(parseD(origStart)); ns.setDate(ns.getDate()+dayDelta);
+      const ne = new Date(parseD(origEnd));   ne.setDate(ne.getDate()+dayDelta);
+      startDate = ns; endDate = ne;
+      const left = ((ns-new Date(minMs))/(1000*60*60*24)/totalDays*100).toFixed(2);
+      bar.style.left=left+'%';
+    }
+    const lbl = bar.querySelector('.gantt-bar-label');
+    if (lbl) lbl.textContent = `${bar.querySelector('.gantt-bar-fill')?.style.width||'0%'} · ${fmtDate(toISO(startDate))} → ${fmtDate(toISO(endDate))}`;
+  };
+
+  const onUp = () => {
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('mouseup',onUp);
+    document.removeEventListener('touchmove',onMove);
+    document.removeEventListener('touchend',onUp);
+    if (!window._ganttDragging) return;
+    setTimeout(()=>{ window._ganttDragging=false; },100);
+    const newStart = toISO(startDate);
+    const newEnd   = toISO(endDate);
+    if (newStart===origStart && newEnd===origEnd) return;
+    bar.dataset.start=newStart; bar.dataset.end=newEnd;
+    showGanttConfirmBar(projId, origStart, origEnd, newStart, newEnd);
+  };
+
+  document.addEventListener('mousemove',onMove);
+  document.addEventListener('mouseup',onUp);
+  document.addEventListener('touchmove',onMove,{passive:false});
+  document.addEventListener('touchend',onUp);
+}
+
+function toISO(d) {
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+function ganttBarMoveStart(e, projId) {
+  // only start move if not clicking on handle
+  if (e.target.classList.contains('gantt-drag-handle')) return;
+  ganttDragStart(e, projId, 'move');
 }
 
 // ── TEMPLATES ──
