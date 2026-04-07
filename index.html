@@ -774,6 +774,7 @@ async function renderHomeDashboard() {
     return list.map(p=>{
       const s=statsMap[p.id]||{draws:0,total:0,done:0,pct:0,blPend:0,pendTotal:0,overdue:0,thisWeek:0};
       const projStatus = (()=>{
+        if (p.status==='concluido') return null;
         if (!p.end_date) return null;
         const [y,m,d] = p.end_date.substring(0,10).split('-').map(Number);
         const endDt = new Date(y,m-1,d);
@@ -923,6 +924,7 @@ function showProjectsPage(status) {
   const today = new Date(); today.setHours(0,0,0,0);
   const cardHTML = list.map(p=>{
     const projStatus = (()=>{
+      if (p.status==='concluido') return null;
       if (!p.end_date) return null;
       const [y,m,d]=p.end_date.substring(0,10).split('-').map(Number);
       const diff=Math.round((new Date(y,m-1,d)-today)/(1000*60*60*24));
@@ -1027,6 +1029,7 @@ function renderAll() {
     <div>
       <div class="sec-header">
         <span class="sec-tag">Matriz</span><span class="sec-title">Desenhos × Tarefas</span><div class="sec-line"></div>
+        <span id="doneDrawsToggleWrap"></span>
         <button class="btn btn-ghost btn-sm" onclick="openModal('column')">+ Tarefa</button>
         <button class="btn btn-primary btn-sm" onclick="openModal('drawing')">+ Desenho</button>
         <button class="btn btn-accent btn-sm" onclick="openModal('sequential')">⚡ Sequencial</button>
@@ -1067,18 +1070,31 @@ function renderAll() {
   `;
 }
 
+let showDoneDraws = false;
+
+function toggleDoneDraws() {
+  showDoneDraws = !showDoneDraws;
+  renderAll();
+}
+
 function buildMatrix() {
   if (!cols.length&&!draws.length) return `<div class="empty"><div class="empty-icon">📋</div><div class="empty-title">Matriz vazia</div><div class="empty-sub">Use "+ Coluna" e "+ Desenho" para começar.<br>Ou aplique um modelo em "📋 Modelos de Matriz".</div></div>`;
   const thead=`<thead><tr>
     <th>Desenho</th>
     ${cols.map(c=>`<th class="tcol"><div class="th-inner">${esc(c.name)}<button class="th-del" onclick="delCol('${c.id}')">×</button></div></th>`).join('')}
   </tr></thead>`;
+
+  const doneCount = draws.filter(d=>{
+    const drawTasks=cols.map(c=>tasks[d.id]?.[c.id]);
+    return cols.length>0 && drawTasks.every(t=>t?.done);
+  }).length;
+
   const tbody=draws.length?`<tbody>${draws.map(d=>{
     const pds=pendencias[d.id]||[];
     const hasPend=pds.length>0;
-    // check if all tasks done
     const drawTasks = cols.map(c=>tasks[d.id]?.[c.id]);
     const allDone = cols.length>0 && drawTasks.every(t=>t?.done);
+    if (allDone && !showDoneDraws) return '';
     const rowStyle = allDone?'background:rgba(74,222,128,.06);border-left:3px solid #4ade80':'';
     const dateStyle = allDone?'color:#4ade80;font-weight:700':dateCls(d.due_date);
     return `<tr id="draw-row-${d.id}" style="${rowStyle}">
@@ -1102,8 +1118,21 @@ function buildMatrix() {
         </td>`;
       }).join('')}
     </tr>`;}).join('')}</tbody>`:'' ;
+
+  const toggleBtn = doneCount>0 ? `<button class="btn btn-ghost btn-sm" onclick="toggleDoneDraws()" style="color:${showDoneDraws?'#4ade80':'var(--muted)'}">
+    ${showDoneDraws?'🙈 Ocultar':'👁 Exibir'} concluídos (${doneCount})
+  </button>` : '';
+
+  // inject toggle into header
+  requestAnimationFrame(()=>{
+    const wrap = document.getElementById('doneDrawsToggleWrap');
+    if (wrap) wrap.innerHTML = toggleBtn;
+  });
+
   return `
-    <div class="matrix-wrap" id="matrixWrap"><table id="matrixTable">${thead}${tbody}</table><button class="add-row" onclick="openModal('drawing')">Adicionar desenho</button></div>
+    <div class="matrix-wrap" id="matrixWrap"><table id="matrixTable">${thead}${tbody}</table>
+      <button class="add-row" onclick="openModal('drawing')">Adicionar desenho</button>
+    </div>
   `;
 }
 
