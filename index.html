@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/pt.js"></script>
 <style>
@@ -89,9 +90,14 @@ body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-he
 
 /* MATRIX */
 .matrix-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
+.matrix-wrap::-webkit-scrollbar{height:10px}
+.matrix-wrap::-webkit-scrollbar-track{background:var(--surf2);border-radius:6px}
+.matrix-wrap::-webkit-scrollbar-thumb{background:var(--accent);border-radius:6px}
+.matrix-wrap::-webkit-scrollbar-thumb:hover{background:#00a8dd}
+
 table{width:100%;border-collapse:collapse;font-size:14px}
 thead tr{background:var(--surf);border-bottom:2px solid var(--border)}
-th{padding:13px 16px;text-align:left;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--silver);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+th{padding:13px 16px;text-align:left;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--silver);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;position:sticky;top:0;z-index:5;background:var(--surf)}
 th.tcol{text-align:center;border-left:1px solid var(--border);min-width:110px}
 .th-inner{display:flex;align-items:center;justify-content:center;gap:5px}
 .th-del{opacity:0;cursor:pointer;color:var(--danger);font-size:15px;background:none;border:none;padding:0;transition:opacity .15s;line-height:1}
@@ -438,10 +444,6 @@ body.flatpickr-open{overflow:hidden!important}
       </div>
       <div class="topbar-right" id="topActions" style="display:none">
         <button class="btn btn-ghost btn-sm" onclick="openModal('editProjDates')">📅 Datas</button>
-        <button class="btn btn-ghost btn-sm" onclick="openTemplates()">📋 Modelos</button>
-        <button class="btn btn-accent btn-sm" onclick="openModal('sequential')">⚡ Sequencial</button>
-        <button class="btn btn-ghost btn-sm" onclick="openModal('column')">+ Coluna</button>
-        <button class="btn btn-primary btn-sm" onclick="openModal('drawing')">+ Desenho</button>
         <button class="btn btn-ghost btn-sm" onclick="exportPDF()">🖨️ Imprimir</button>
         <button class="btn btn-danger btn-sm" onclick="delProject()">Excluir</button>
       </div>
@@ -1023,11 +1025,25 @@ function renderAll() {
       <div class="stat"><div class="stat-val" style="color:${totalPends>0?'#f97316':'var(--muted)'}">${totalPends}</div><div class="stat-lbl">Pendências</div></div>
     </div>
     <div>
-      <div class="sec-header"><span class="sec-tag">Matriz</span><span class="sec-title">Desenhos × Tarefas</span><div class="sec-line"></div></div>
+      <div class="sec-header">
+        <span class="sec-tag">Matriz</span><span class="sec-title">Desenhos × Tarefas</span><div class="sec-line"></div>
+        <button class="btn btn-ghost btn-sm" onclick="openModal('column')">+ Tarefa</button>
+        <button class="btn btn-primary btn-sm" onclick="openModal('drawing')">+ Desenho</button>
+        <button class="btn btn-accent btn-sm" onclick="openModal('sequential')">⚡ Sequencial</button>
+        <button class="btn btn-ghost btn-sm" onclick="openTemplates()">📋 Modelos</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportMatrixXLSX()" title="Exportar matriz">📤</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('xlsxImport').click()" title="Importar matriz">📥</button>
+        <input type="file" id="xlsxImport" accept=".xlsx,.xls" style="display:none" onchange="importMatrixXLSX(this)"/>
+      </div>
       ${buildMatrix()}
     </div>
     <div>
-      <div class="sec-header"><span class="sec-tag">Backlog</span><span class="sec-title">Tarefas Gerais</span><div class="sec-line"></div></div>
+      <div class="sec-header">
+        <span class="sec-tag">Backlog</span><span class="sec-title">Tarefas Gerais</span><div class="sec-line"></div>
+        <button class="btn btn-ghost btn-sm" onclick="exportBacklogXLSX()" title="Exportar backlog">📤</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('blImport').click()" title="Importar backlog">📥</button>
+        <input type="file" id="blImport" accept=".xlsx,.xls" style="display:none" onchange="importBacklogXLSX(this)"/>
+      </div>
       ${buildBacklog()}
     </div>
     <div>
@@ -1086,7 +1102,9 @@ function buildMatrix() {
         </td>`;
       }).join('')}
     </tr>`;}).join('')}</tbody>`:'' ;
-  return `<div class="matrix-wrap"><table>${thead}${tbody}</table><button class="add-row" onclick="openModal('drawing')">Adicionar desenho</button></div>`;
+  return `
+    <div class="matrix-wrap" id="matrixWrap"><table id="matrixTable">${thead}${tbody}</table><button class="add-row" onclick="openModal('drawing')">Adicionar desenho</button></div>
+  `;
 }
 
 function buildBacklog() {
@@ -1340,7 +1358,7 @@ const modalDefs = {
           <div class="field"><label>Data de Entrega</label><input id="f2" class="date-input" placeholder="Selecione uma data..." readonly/></div>`
   },
   column: {
-    title:'Nova Coluna',
+    title:'Nova Tarefa (Coluna)',
     body:`<div class="field"><label>Nome da Tarefa *</label><input id="f1" placeholder="Ex: Modelagem"/></div>`
   },
   backlog: {
@@ -1514,7 +1532,7 @@ async function confirmModal() {
         const {data:ts}=await db.from('tasks').insert(draws.map(d=>({drawing_id:d.id,column_id:c.id,done:false}))).select();
         for (const t of (ts||[])) { if (!tasks[t.drawing_id]) tasks[t.drawing_id]={}; tasks[t.drawing_id][t.column_id]=t; }
       }
-      toast('Coluna adicionada!','ok');
+      toast('Tarefa adicionada!','ok');
     }
 
     if (modalType==='backlog') {
@@ -1729,6 +1747,210 @@ function ganttBarMoveStart(e, projId) {
   // only start move if not clicking on handle
   if (e.target.classList.contains('gantt-drag-handle')) return;
   ganttDragStart(e, projId, 'move');
+}
+
+function exportBacklogXLSX() {
+  if (!activeProj) return;
+  const wb = XLSX.utils.book_new();
+  const header = ['Tarefa', 'Data de Entrega', 'Concluída', 'Data de Conclusão'];
+  const rows = [header];
+  for (const b of backlog) {
+    rows.push([
+      b.text,
+      b.due_date ? fmtDate(b.due_date) : '',
+      b.done ? 'sim' : '',
+      b.completed_at ? new Date(b.completed_at).toLocaleDateString('pt-BR') : ''
+    ]);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:40},{wch:14},{wch:12},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Backlog');
+  XLSX.writeFile(wb, `${activeProj.name.replace(/\s+/g,'_')}_backlog.xlsx`);
+  toast('Backlog exportado!','ok');
+}
+
+async function importBacklogXLSX(input) {
+  if (!input.files?.length||!activeProj) return;
+  const file = input.files[0];
+  input.value='';
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    if (rows.length < 2) { toast('Planilha vazia','err'); return; }
+
+    // detect if first row is header (contains 'tarefa' or 'task')
+    const firstCell = String(rows[0][0]||'').toLowerCase();
+    const dataRows = (firstCell.includes('tarefa')||firstCell.includes('task')) ? rows.slice(1) : rows;
+
+    toast('Importando...','');
+    let created = 0;
+    for (const row of dataRows) {
+      const text = String(row[0]||'').trim();
+      if (!text) continue;
+
+      // skip if already exists
+      if (backlog.some(b=>b.text===text)) continue;
+
+      const dateRaw = String(row[1]||'').trim();
+      let due_date = null;
+      if (dateRaw) {
+        if (dateRaw.includes('/')) {
+          const [dd,mm,yyyy]=dateRaw.split('/');
+          due_date=`${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+        } else if (dateRaw.includes('-')) {
+          due_date=dateRaw.substring(0,10);
+        }
+      }
+
+      const doneRaw = String(row[2]||'').trim().toLowerCase();
+      const done = doneRaw==='sim'||doneRaw==='x'||doneRaw==='1'||doneRaw==='yes';
+      const completed_at = done ? new Date().toISOString() : null;
+
+      const {data:b}=await db.from('backlog').insert({
+        project_id: activeProj.id,
+        text,
+        due_date: due_date || activeProj.end_date || null,
+        done,
+        completed_at
+      }).select().single();
+      if (b) { backlog.push(b); created++; }
+    }
+
+    renderAll();
+    toast(`${created} tarefa${created!==1?'s':''} importada${created!==1?'s':''}!`, 'ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao importar: '+e.message,'err');
+  }
+}
+
+// ── EXPORT / IMPORT XLSX ──
+function exportMatrixXLSX() {
+  if (!activeProj) return;
+  const wb = XLSX.utils.book_new();
+  const header = ['Desenho', 'Data', ...cols.map(c=>c.name)];
+  const rows = [header];
+  for (const d of draws) {
+    const row = [d.code, d.due_date?fmtDate(d.due_date):''];
+    for (const c of cols) {
+      const t = tasks[d.id]?.[c.id];
+      row.push(t?.done ? 'x' : '');
+    }
+    rows.push(row);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  // column widths
+  ws['!cols'] = [
+    {wch:20}, {wch:12},
+    ...cols.map(()=>({wch:14}))
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, 'Matriz');
+  XLSX.writeFile(wb, `${activeProj.name.replace(/\s+/g,'_')}_matriz.xlsx`);
+  toast('Exportado com sucesso!','ok');
+}
+
+async function importMatrixXLSX(input) {
+  if (!input.files?.length||!activeProj) return;
+  const file = input.files[0];
+  input.value='';
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    if (!rows.length) { toast('Planilha vazia','err'); return; }
+
+    const header = rows[0].map(h=>String(h).trim());
+    if (header.length < 1) { toast('Formato inválido','err'); return; }
+
+    // cols start at index 2 (A=Desenho, B=Data, C+=tarefas)
+    const colNames = header.slice(2).filter(Boolean);
+    if (!colNames.length) { toast('Nenhuma coluna de tarefa encontrada','err'); return; }
+
+    toast('Importando...','');
+    const pid = activeProj.id;
+
+    // 1. create missing columns
+    const newColNames = colNames.filter(n=>!cols.some(c=>c.name.toLowerCase()===n.toLowerCase()));
+    for (const name of newColNames) {
+      const {data:c}=await db.from('columns').insert({project_id:pid,name,position:cols.length}).select().single();
+      cols.push(c);
+      // create tasks for existing draws
+      if (draws.length) {
+        const {data:ts}=await db.from('tasks').insert(draws.map(d=>({drawing_id:d.id,column_id:c.id,done:false}))).select();
+        for (const t of (ts||[])) { if (!tasks[t.drawing_id]) tasks[t.drawing_id]={}; tasks[t.drawing_id][t.column_id]=t; }
+      }
+    }
+
+    // rebuild col map by name for matching
+    const colByName = {};
+    for (const c of cols) colByName[c.name.toLowerCase()] = c;
+
+    // 2. process rows
+    for (const row of rows.slice(1)) {
+      const code = String(row[0]||'').trim();
+      if (!code) continue;
+      const dateRaw = String(row[1]||'').trim();
+      // parse date dd/mm/yyyy or yyyy-mm-dd
+      let due_date = null;
+      if (dateRaw) {
+        if (dateRaw.includes('/')) {
+          const [dd,mm,yyyy]=dateRaw.split('/');
+          due_date=`${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`;
+        } else if (dateRaw.includes('-')) {
+          due_date=dateRaw.substring(0,10);
+        }
+      }
+
+      // find or create drawing
+      let draw = draws.find(d=>d.code===code);
+      if (!draw) {
+        const {data:d}=await db.from('drawings').insert({project_id:pid,code,due_date:due_date||activeProj.end_date||null,position:draws.length}).select().single();
+        draws.push(d);
+        tasks[d.id]={};
+        // create tasks for all cols
+        if (cols.length) {
+          const {data:ts}=await db.from('tasks').insert(cols.map(c=>({drawing_id:d.id,column_id:c.id,done:false}))).select();
+          for (const t of (ts||[])) tasks[d.id][t.column_id]=t;
+        }
+        draw=d;
+      } else if (due_date && due_date!==draw.due_date) {
+        await db.from('drawings').update({due_date}).eq('id',draw.id);
+        draw.due_date=due_date;
+      }
+
+      // 3. set checks
+      for (let i=0;i<colNames.length;i++) {
+        const colName = colNames[i];
+        const col = colByName[colName.toLowerCase()];
+        if (!col) continue;
+        const val = String(row[i+2]||'').trim().toLowerCase();
+        const isDone = val==='x'||val==='1'||val==='✓'||val==='sim'||val==='yes';
+        const existing = tasks[draw.id]?.[col.id];
+        if (existing) {
+          if (existing.done!==isDone) {
+            const now = isDone?new Date().toISOString():null;
+            await db.from('tasks').update({done:isDone,completed_at:now}).eq('id',existing.id);
+            tasks[draw.id][col.id].done=isDone;
+            tasks[draw.id][col.id].completed_at=now;
+          }
+        } else if (isDone) {
+          const now=new Date().toISOString();
+          const {data:t}=await db.from('tasks').insert({drawing_id:draw.id,column_id:col.id,done:true,completed_at:now}).select().single();
+          if (!tasks[draw.id]) tasks[draw.id]={};
+          tasks[draw.id][col.id]=t;
+        }
+      }
+    }
+
+    renderAll();
+    toast('Importação concluída!','ok');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao importar: '+e.message,'err');
+  }
 }
 
 // ── TEMPLATES ──
